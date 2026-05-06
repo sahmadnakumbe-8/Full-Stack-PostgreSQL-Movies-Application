@@ -2,12 +2,77 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from movies import DatabaseDriverError, DatabaseOperationError, MovieCollectionDB
 
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+VALID_CONDITIONS = {
+    "new": "New",
+    "good": "Good",
+    "fair": "Fair",
+    "collector": "Collector",
+}
+
+VALID_RATINGS = {"G", "PG", "PG-13", "R", "NR"}
+
+
+def parse_int_in_range(value_text: str, field_name: str, minimum: int, maximum: int) -> int:
+    """Parse an integer and validate that it falls within the accepted range."""
+
+    cleaned = value_text.strip()
+    if not cleaned.isdigit():
+        raise ValueError(f"{field_name} must be a whole number.")
+
+    value = int(cleaned)
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{field_name} must be between {minimum} and {maximum}.")
+
+    return value
+
+
+def normalize_rating(rating_text: str) -> str:
+    """Normalize the MPAA rating to one of the allowed database values."""
+
+    cleaned = rating_text.strip().upper()
+    if cleaned in VALID_RATINGS:
+        return cleaned
+
+    raise ValueError("MPAA rating must be one of: G, PG, PG-13, R, or NR.")
+
+
+def normalize_condition(condition_text: str) -> str:
+    """Normalize copy condition input to the allowed database values."""
+
+    cleaned = condition_text.strip().lower()
+    if cleaned in VALID_CONDITIONS:
+        return VALID_CONDITIONS[cleaned]
+
+    raise ValueError(
+        "Condition must be one of: New, Good, Fair, or Collector."
+    )
+
+
+def normalize_purchase_date(date_text: str) -> str | None:
+    """Accept YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY and normalize to YYYY-MM-DD."""
+
+    cleaned = date_text.strip()
+    if not cleaned:
+        return None
+
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d/%m/%y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(cleaned, pattern).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    raise ValueError(
+        "Purchase date must use YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY, for example 2026-05-05, 05/05/2026, or 07/13/2026."
+    )
 
 
 def print_heading(title: str) -> None:
@@ -31,9 +96,13 @@ def print_menu() -> None:
 
 def prompt_for_movie(db: MovieCollectionDB) -> None:
     title = input("Title: ").strip()
-    release_year = int(input("Release year: ").strip())
-    runtime_minutes = int(input("Runtime in minutes: ").strip())
-    mpaa_rating = input("MPAA rating (G, PG, PG-13, R, NR): ").strip().upper()
+    release_year = parse_int_in_range(
+        input("Release year (1888-2100): "), "Release year", 1888, 2100
+    )
+    runtime_minutes = parse_int_in_range(
+        input("Runtime in minutes (1-500): "), "Runtime in minutes", 1, 500
+    )
+    mpaa_rating = normalize_rating(input("MPAA rating (G, PG, PG-13, R, NR): "))
     genre_name = input("Genre: ").strip()
     studio_name = input("Studio: ").strip()
     directors = [
@@ -59,12 +128,28 @@ def prompt_for_movie(db: MovieCollectionDB) -> None:
 
 
 def prompt_for_copy(db: MovieCollectionDB) -> None:
-    movie_id = int(input("Movie ID: ").strip())
+    rows = db.fetch_collection()
+    if not rows:
+        raise ValueError("No movies are available yet. Add a movie first or load sample seed data.")
+
+    print("Available movies:")
+    for row in rows:
+        print(f"  {row['movie_id']}: {row['title']} ({row['release_year']})")
+
+    movie_id_text = input("Movie ID number from the list above: ").strip()
+    if not movie_id_text.isdigit():
+        raise ValueError(
+            "Movie ID must be a number like 1 or 2. Enter the date later at the purchase date prompt."
+        )
+
+    movie_id = int(movie_id_text)
     format_name = input("Format (DVD, Blu-ray, Digital, VHS, 4K): ").strip()
     shelf_location = input("Shelf location: ").strip()
     condition = input("Condition (New, Good, Fair, Collector): ").strip()
     price = input("Purchase price (optional): ").strip()
-    purchase_date = input("Purchase date YYYY-MM-DD (optional): ").strip()
+    purchase_date = input(
+        "Purchase date YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY (optional, example 05/05/2026 or 07/13/2026): "
+    ).strip()
     quantity_text = input("Quantity: ").strip()
     lent_out = input("Is lent out? (y/n): ").strip().lower() == "y"
 
@@ -72,9 +157,9 @@ def prompt_for_copy(db: MovieCollectionDB) -> None:
         movie_id=movie_id,
         format_name=format_name,
         shelf_location=shelf_location,
-        condition=condition,
+        condition=normalize_condition(condition),
         purchase_price=float(price) if price else None,
-        purchase_date=purchase_date or None,
+        purchase_date=normalize_purchase_date(purchase_date),
         quantity=int(quantity_text) if quantity_text else 1,
         is_lent_out=lent_out,
     )
