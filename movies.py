@@ -95,7 +95,6 @@ class MovieCollectionDB:
             with script_path.open("r", encoding="utf-8") as handle:
                 sql = handle.read()
             with self._connect() as conn, conn.cursor() as cur:
-                self._set_search_path(cur)
                 cur.execute(sql)
                 conn.commit()
         except Exception as exc:  # pragma: no cover

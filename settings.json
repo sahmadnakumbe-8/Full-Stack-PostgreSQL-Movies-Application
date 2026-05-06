@@ -4,7 +4,7 @@
     "port": 5432,
     "dbname": "movies_i_own",
     "user": "postgres",
-    "password": "change_me",
+    "password": "postgres",
     "schema": "movies_app"
   }
 }
