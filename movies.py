@@ -161,6 +161,23 @@ class MovieCollectionDB:
             with self._connect() as conn, conn.cursor() as cur:
                 self._set_search_path(cur)
                 cur.execute(
+                    """
+                    SELECT movie_id, title
+                    FROM movies
+                    WHERE LOWER(title) = LOWER(%s)
+                      AND release_year = %s
+                    LIMIT 1;
+                    """,
+                    (title.strip(), release_year),
+                )
+                existing_movie = cur.fetchone()
+                if existing_movie:
+                    raise DatabaseOperationError(
+                        f"A movie with title '{existing_movie['title']}' and year {release_year} already exists "
+                        f"as movie ID {existing_movie['movie_id']}."
+                    )
+
+                cur.execute(
                     insert_sql,
                     (
                         genre_name,
